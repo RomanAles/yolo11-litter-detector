@@ -1,0 +1,6 @@
+profile: underwater
+model: models/underwater/weights/best.pt
+confidence: 0.45
+iou: 0.5
+imgsz: 640
+dataset: data/prepared/underwater/data.yaml

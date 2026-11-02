@@ -1,0 +1,37 @@
+version: improvement_v2
+selection_split: val
+final_split: test
+seed: 42
+training:
+  epochs: 80
+  patience: 15
+  imgsz: 640
+  batch: 16
+  batch_policy: underwater YOLO11n uses 32 at 640 and 16 at 960; effective accumulated batch is 64; larger models use explicit bounded batches.
+  workers: 1
+  loader_policy: single loader after RAM exhaustion; seed replica preserves original selected-run worker count; no concurrent evaluation during training.
+  amp: true
+  optimizer: AdamW
+  lr0: 0.001
+  close_mosaic: 10
+resolution_candidates: [640, 960, 1280]
+sahi_tile_candidates: [640, 960]
+architectures: [yolo11n, yolo11s]
+selection:
+  primary: validation_map50_95
+  tie_break: lower_latency
+  minimum_gain_for_larger_resolution: 0.005
+augmentation_comparison:
+  epochs: 15
+  patience: 8
+  policy: matched_control_and_one_change_at_a_time
+stability:
+  seeds: [42, 123]
+  group_folds: 3
+  fold_epochs: 20
+  fold_patience: 8
+  note: Full training for seed comparison; grouped CV is a separately labelled 20-epoch robustness screen.
+operating_modes:
+  recall: maximum_f2_on_validation
+  precision: maximum_f0_5_on_validation
+test_policy: Final once per frozen candidate, after selection and thresholds. Historical test results are known; no claim of a new blind benchmark.

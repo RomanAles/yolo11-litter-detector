@@ -1,0 +1,15 @@
+.venv/
+.cache/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+data/
+models/
+outputs/
+runs/
+*.pt
+*.zip
+*.tar.gz
+*.log
+Ultralytics/
+docs/chat-exports/

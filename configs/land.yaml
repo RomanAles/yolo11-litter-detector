@@ -1,0 +1,6 @@
+profile: land
+model: models/land/weights/best.pt
+confidence: 0.25
+iou: 0.5
+imgsz: 640
+dataset: data/prepared/land/data.yaml

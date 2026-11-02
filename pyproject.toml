@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "litter-detector"
+version = "0.1.0"
+description = "YOLO11 litter detection on public land and underwater datasets"
+requires-python = ">=3.11"
+dependencies = ["ultralytics>=8.3,<9", "opencv-python>=4.10", "PyYAML>=6", "requests>=2.32"]
+
+[project.scripts]
+litter = "litter_detector.cli:main"
+litter-ui = "litter_detector.ui:main"
+
+[project.optional-dependencies]
+quality = ["sahi>=0.14,<0.15"]
+export = ["onnx>=1.19", "onnxruntime>=1.23", "onnxscript>=0.5"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

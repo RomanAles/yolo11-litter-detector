@@ -1,0 +1,122 @@
+{
+  "audited_on": "2026-10-31",
+  "method": "Static ZIP/pickletools inspection; pickle not executed, torch model not loaded, inference not run",
+  "source_directory": "D:\\CodesNodes\\GPO_srochno",
+  "checkpoint": "D:\\CodesNodes\\GPO_srochno\\best.pt",
+  "checkpoint_size_bytes": 52063456,
+  "checkpoint_sha256": "ba6a51fbde5a706acf31b43a81d62641b2034b353ee1bb35285dd34d86ce9a31",
+  "architecture_from_metadata": "YOLOv8m",
+  "base_model_reference": "yolov8m.pt",
+  "training_run_reference": "runs/detect/yolov8m_100epochs",
+  "ultralytics_version_in_checkpoint": "8.0.43",
+  "date_in_checkpoint": "2023-02-22T15:49:02.347781",
+  "training_args_observed": {
+    "epochs": 100,
+    "batch": 16,
+    "imgsz": 640,
+    "device": 0
+  },
+  "class_count": 60,
+  "class_names_verbatim": {
+    "0": "Aluminium foil",
+    "1": "Battery",
+    "2": "Aluminium blister pack",
+    "3": "Carded blister pack",
+    "4": "Other plastic bottle",
+    "5": "Clear plastic bottle",
+    "6": "Glass bottle",
+    "7": "Plastic bottle cap",
+    "8": "Metal bottle cap",
+    "9": "Broken glass",
+    "10": "Food Can",
+    "11": "Aerosol",
+    "12": "Drink can",
+    "13": "Toilet tube",
+    "14": "Other carton",
+    "15": "Egg carton",
+    "16": "Drink carton",
+    "17": "Corrugated carton",
+    "18": "Meal carton",
+    "19": "Pizza box",
+    "20": "Paper cup",
+    "21": "Disposable plastic cup",
+    "22": "Foam cup",
+    "23": "Glass cup",
+    "24": "Other plastic cup",
+    "25": "Food waste",
+    "26": "Glass jar",
+    "27": "Plastic lid",
+    "28": "Metal lid",
+    "29": "Other plastic",
+    "30": "Magazine paper",
+    "31": "Tissues",
+    "32": "Wrapping paper",
+    "33": "Normal paper",
+    "34": "Paper bag",
+    "35": "Plastified paper bag",
+    "36": "Plastic film",
+    "37": "Six pack rings",
+    "38": "Garbage bag",
+    "39": "Other plastic wrapper",
+    "40": "Single-use carrier bag",
+    "41": "Polypropylene bag",
+    "42": "Crisp packet",
+    "43": "Spread tub",
+    "44": "Tupperware",
+    "45": "Disposable food container",
+    "46": "Foam food container",
+    "47": "Other plastic container",
+    "48": "Plastic glooves",
+    "49": "Plastic utensils",
+    "50": "Pop tab",
+    "51": "Rope & strings",
+    "52": "Scrap metal",
+    "53": "Shoe",
+    "54": "Squeezable tube",
+    "55": "Plastic straw",
+    "56": "Paper straw",
+    "57": "Styrofoam piece",
+    "58": "Unlabeled litter",
+    "59": "Cigarette"
+  },
+  "provenance": "Exact download source and licensing of this local checkpoint are not established",
+  "compatibility_with_new_environment": "Not tested",
+  "underwater_quality": "Not evaluated",
+  "files": [
+    {
+      "path": "D:\\CodesNodes\\GPO_srochno\\best.pt",
+      "size_bytes": 52063456,
+      "sha256": "ba6a51fbde5a706acf31b43a81d62641b2034b353ee1bb35285dd34d86ce9a31"
+    },
+    {
+      "path": "D:\\CodesNodes\\GPO_srochno\\BL_13102020_1.jpg",
+      "size_bytes": 76980,
+      "sha256": "aa32bed6e05b906e2400b2b610cd4c485d016df32bb484e2852a05daa33f42cc"
+    },
+    {
+      "path": "D:\\CodesNodes\\GPO_srochno\\image.png",
+      "size_bytes": 1069957,
+      "sha256": "657c1a7800b6b05ff393456a397db7a796b21eb741164f2bc85e6789b062311a"
+    },
+    {
+      "path": "D:\\CodesNodes\\GPO_srochno\\runs\\detect\\predict\\BL_13102020_1.jpg",
+      "size_bytes": 104783,
+      "sha256": "7c5b3f1601cb8983f118446df98847c0a1c2f859c415e3e1c9864295902d2c98"
+    },
+    {
+      "path": "D:\\CodesNodes\\GPO_srochno\\runs\\detect\\predict2\\BL_13102020_1.jpg",
+      "size_bytes": 104783,
+      "sha256": "7c5b3f1601cb8983f118446df98847c0a1c2f859c415e3e1c9864295902d2c98"
+    },
+    {
+      "path": "D:\\CodesNodes\\GPO_srochno\\runs\\detect\\predict3\\image.jpg",
+      "size_bytes": 167559,
+      "sha256": "838804f7957590ac11ed2c7de58eb4dd173a1a627b31f3918f693bf305a3f09d"
+    },
+    {
+      "path": "D:\\CodesNodes\\GPO_srochno\\test.py",
+      "size_bytes": 471,
+      "sha256": "7341a1559ac5e7cc4224bf4ed24536c30e4999789734c0ea95b2dd2c747b0959"
+    }
+  ]
+}

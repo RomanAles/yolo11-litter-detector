@@ -1,0 +1,9 @@
+# Bootstrap отдельного окружения Miniconda; точные pip-версии: requirements-lock.txt.
+# Создавать с --prefix .\.venv; дополнительный python -m venv не требуется.
+# Установка CUDA-зависимостей и приложения: scripts/bootstrap.ps1.
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.11.18
+  - pip=26.2.2
