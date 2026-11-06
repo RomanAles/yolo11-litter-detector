@@ -3,10 +3,11 @@
 This runner does not touch application configs or evaluate the historical test set.
 """
 from pathlib import Path
-import subprocess,json,time,sys,hashlib
+import subprocess,json,time,sys
 import yaml
 from litter_detector.detector import ROOT
 from litter_detector.artifacts import write_json
+from litter_detector.experiments import validate_existing_run
 
 PYTHON=str(ROOT/'.venv/python.exe')
 EXPERIMENT=ROOT/'models/experiments'
@@ -17,11 +18,7 @@ def completed(profile,name):return EXPERIMENT/profile/name/'summary.json'
 
 def run(profile,name,**kwargs):
     if completed(profile,name).exists():
-        result=json.loads(completed(profile,name).read_text())
-        checks=result.get('input_sha256',{result['data']:result['data_yaml_sha256']})
-        if any(not Path(path).exists() or hashlib.sha256(Path(path).read_bytes()).hexdigest()!=digest for path,digest in checks.items()):
-            raise RuntimeError(f'Inputs of completed experiment {profile}/{name} have changed; use a new versioned run')
-        return result
+        return validate_existing_run(completed(profile,name).parent,{'profile':profile,'name':name,**kwargs},ROOT)
     command=[PYTHON,str(ROOT/'scripts/experiment.py'),profile,name]
     for key,value in kwargs.items():command += ['--'+key.replace('_','-'),str(value)]
     log=ROOT/'.cache'/f'v2-{profile}-{name}.log'

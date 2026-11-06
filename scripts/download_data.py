@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import argparse
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
 import hashlib
+from itertools import islice
 import json
 from pathlib import Path
 import time
@@ -126,11 +127,11 @@ def range_download(url, destination, chunk_size=16*1024*1024):
     """Restart-safe range downloads, bounded memory, no discarded multi-GB transfer."""
     if destination.is_file():
         return destination
-    response=requests.get(url,headers={'Range':'bytes=0-0'},timeout=30)
-    response.raise_for_status()
-    if response.status_code!=206:
-        raise RuntimeError('Server does not support partial downloads')
-    size=int(response.headers['Content-Range'].split('/')[-1])
+    with requests.get(url,headers={'Range':'bytes=0-0'},timeout=30) as response:
+        response.raise_for_status()
+        if response.status_code!=206:
+            raise RuntimeError('Server does not support partial downloads')
+        size=int(response.headers['Content-Range'].split('/')[-1])
     temporary=destination.with_suffix('.part')
     ledger=destination.with_suffix('.chunks.json')
     destination.parent.mkdir(parents=True,exist_ok=True)
@@ -142,24 +143,32 @@ def range_download(url, destination, chunk_size=16*1024*1024):
         start=index*chunk_size;end=min(size,start+chunk_size)-1
         for attempt in range(5):
             try:
-                r=requests.get(url,headers={'Range':f'bytes={start}-{end}'},timeout=(20,90))
-                r.raise_for_status()
-                if r.status_code!=206 or len(r.content)!=end-start+1 or not r.headers.get('Content-Range','').startswith(f'bytes {start}-{end}/'):
-                    raise OSError('Incorrect range response')
-                return index,r.content
+                with requests.get(url,headers={'Range':f'bytes={start}-{end}'},timeout=(20,90)) as r:
+                    r.raise_for_status()
+                    if r.status_code!=206 or len(r.content)!=end-start+1 or not r.headers.get('Content-Range','').startswith(f'bytes {start}-{end}/'):
+                        raise OSError('Incorrect range response')
+                    return index,r.content
             except (requests.RequestException,OSError):
                 if attempt==4:raise
                 time.sleep(2**attempt)
     total=(size+chunk_size-1)//chunk_size
-    pending=[i for i in range(total) if i not in completed]
-    with temporary.open('r+b') as output, ThreadPoolExecutor(max_workers=6) as pool:
-        futures=[pool.submit(fetch,i) for i in pending]
-        for future in as_completed(futures):
-            index,data=future.result();output.seek(index*chunk_size);output.write(data);output.flush()
-            completed.add(index)
-            ledger_tmp=ledger.with_suffix('.tmp')
-            ledger_tmp.write_text(json.dumps(sorted(completed)));ledger_tmp.replace(ledger)
-            if len(completed)%10==0:print(f'Archive chunks {len(completed)}/{total}',flush=True)
+    pending=(i for i in range(total) if i not in completed)
+    workers=6
+    with temporary.open('r+b') as output, ThreadPoolExecutor(max_workers=workers) as pool:
+        futures={pool.submit(fetch,i) for i in islice(pending,workers)}
+        while futures:
+            finished,futures=wait(futures,return_when=FIRST_COMPLETED)
+            while finished:
+                future=finished.pop()
+                index,data=future.result()
+                del future
+                output.seek(index*chunk_size);output.write(data);output.flush()
+                del data
+                completed.add(index)
+                ledger_tmp=ledger.with_suffix('.tmp')
+                ledger_tmp.write_text(json.dumps(sorted(completed)));ledger_tmp.replace(ledger)
+                if len(completed)%10==0:print(f'Archive chunks {len(completed)}/{total}',flush=True)
+            futures.update(pool.submit(fetch,i) for i in islice(pending,workers-len(futures)))
     temporary.replace(destination)
     return destination
 

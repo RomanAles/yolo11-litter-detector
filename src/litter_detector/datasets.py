@@ -134,6 +134,15 @@ def prepare(profile, seed=42):
         previous = json.loads((output/"manifest.json").read_text(encoding="utf-8"))
         if [(r["source"],r["split"]) for r in previous["images"]] != [(r["source"],r["split"]) for r in records]:
             raise ValueError("Prepared dataset already exists with a different split; choose a fresh destination")
+        if previous.get("annotation_sha256") != annotations_hashes:
+            raise ValueError("Source annotations changed; use a fresh versioned dataset")
+        for old, record in zip(previous["images"], records):
+            if old.get("file_sha256") != record["file_sha256"]:
+                raise ValueError(f"Source image changed: {record['source']}; use a fresh versioned dataset")
+        reusable = True
+    else:
+        # An interrupted first preparation has no provenance for existing copies.
+        reusable = False
     for record in records:
         image_dir = output / "images" / record["split"]
         label_dir = output / "labels" / record["split"]
@@ -141,7 +150,7 @@ def prepare(profile, seed=42):
         label_dir.mkdir(parents=True, exist_ok=True)
         source = ROOT / record["source"]
         target = image_dir / record["name"]
-        if not target.exists():
+        if not reusable or not target.exists():
             # Re-encode to strip EXIF orientation and cap very large TACO images.
             pixels = load_coco_pixels(source,{'width':record['annotation_width'],'height':record['annotation_height']})
             if max(pixels.shape[:2]) > 1600:

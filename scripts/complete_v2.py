@@ -5,10 +5,24 @@ No camera source is opened by this script or its checks.
 """
 import argparse,json,subprocess,sys,time
 from datetime import datetime,timezone
+from importlib.metadata import version
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from litter_detector.artifacts import write_json,write_text
 from litter_detector.detector import ROOT
+
+
+def portable_requirements(frozen):
+    lock=[]
+    for line in frozen.splitlines():
+        if line.startswith('# Editable install'):continue
+        name,separator,url=line.partition(' @ ')
+        if separator and urlsplit(url).scheme=='file':
+            line=f'{name}=={version(name)}'
+        lock.append('-e .' if line.startswith('-e ') else line)
+    if '-e .' not in lock:raise RuntimeError('Editable project installation is missing')
+    return '\n'.join(lock)+'\n'
 
 
 def complete(wait=False):
@@ -40,13 +54,7 @@ def complete(wait=False):
         write_json(output/'completion.json',state)
         print('FINAL_STAGE_COMPLETE',name,flush=True)
     frozen=subprocess.check_output([sys.executable,'-m','pip','freeze'],cwd=ROOT,text=True,encoding='utf8')
-    # Keep the editable local package portable rather than embedding this host's path.
-    lock=[]
-    for line in frozen.splitlines():
-        if line.startswith('# Editable install'):continue
-        lock.append('-e .' if line.startswith('-e ') else line)
-    assert '-e .' in lock
-    write_text(ROOT/'requirements-lock.txt','\n'.join(lock)+'\n')
+    write_text(ROOT/'requirements-lock.txt',portable_requirements(frozen))
     import platform,torch,ultralytics
     write_json(output/'runtime.json',{'python':sys.version,'platform':platform.platform(),
         'torch':torch.__version__,'ultralytics':ultralytics.__version__,

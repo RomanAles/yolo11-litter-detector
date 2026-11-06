@@ -4,21 +4,27 @@ from pathlib import Path
 import yaml
 from litter_detector.detector import ROOT
 from litter_detector.artifacts import write_json
+from litter_detector.experiments import normalize_arguments, validate_existing_run, validate_training_settings
 
 
 def run(args):
-    from ultralytics import YOLO
-    import torch
-    if not torch.cuda.is_available():raise RuntimeError('CUDA required')
     name=args.name;out=ROOT/'models/experiments'/args.profile/name
-    if args.batch is None:args.batch=32 if args.profile=='underwater' and args.imgsz==640 and args.arch=='yolo11n' else 16
-    if (out/'summary.json').exists():print('Already complete:',out);return
-    data=Path(args.data).resolve() if args.data else ROOT/'data/v2'/args.profile/'data.yaml'
-    weights=Path(args.weights) if args.weights else ROOT/'models/pretrained'/f'{args.arch}.pt'
+    normalized=normalize_arguments(vars(args),ROOT)
+    args.batch=normalized['batch']
+    if validate_existing_run(out,vars(args),ROOT) is not None:
+        print('Already complete:',out);return
+    data=Path(normalized['data'])
+    weights=Path(normalized['weights'])
     inputs=[data]+[data.parent/f'{split}.txt' for split in ('train','val')]
     if (data.parent/'manifest.json').exists():inputs.append(data.parent/'manifest.json')
     digests={str(path):hashlib.sha256(path.read_bytes()).hexdigest() for path in inputs}
-    changes=json.loads(args.augment) if args.augment else {}
+    changes=normalized['augment']
+    training_settings=dict(data=str(data),epochs=args.epochs,patience=args.patience,imgsz=args.imgsz,batch=args.batch,
+        device=0,workers=args.workers,amp=True,optimizer='AdamW',lr0=.001,seed=args.seed,deterministic=True,
+        close_mosaic=min(10,args.epochs//4),**changes)
+    from ultralytics import YOLO
+    import torch
+    if not torch.cuda.is_available():raise RuntimeError('CUDA required')
     checkpoint=out/'weights/last.pt'
     resume=checkpoint.exists()
     resumed_epoch=None
@@ -26,9 +32,9 @@ def run(args):
     out.mkdir(parents=True,exist_ok=True)
     recipe_file=out/'run_recipe.json'
     if recipe_file.exists():
-        recorded=json.loads(recipe_file.read_text())
-        if recorded['input_sha256']!=digests:raise RuntimeError('Experiment inputs differ from its recorded recipe')
-    else:recipe_file.write_text(json.dumps({'input_sha256':digests,'arguments':vars(args)},indent=2))
+        validate_existing_run(out,vars(args),ROOT,digests)
+    else:write_json(recipe_file,{'input_sha256':digests,'arguments':vars(args)})
+    effective_training={}
     if resume:
         saved=torch.load(checkpoint,map_location='cpu',weights_only=False)
         resumed_epoch=int(saved.get('epoch',-1))
@@ -36,13 +42,15 @@ def run(args):
             if (out/'weights/best.pt').exists() and (out/'results.csv').exists():recover_completed=True
             else:raise RuntimeError(f'Checkpoint optimizer absent: {checkpoint}; completed artifacts missing')
         previous=saved.get('train_args',{})
-        for key,expected in [('imgsz',args.imgsz),('seed',args.seed),('epochs',args.epochs)]:
-            if previous.get(key)!=expected:raise RuntimeError(f'Resume recipe mismatch for {key}: {previous.get(key)} != {expected}')
+        validate_training_settings(previous,training_settings)
+        effective_training=dict(previous)
         del saved
     model=YOLO(str(out/'weights/best.pt' if recover_completed else checkpoint if resume else weights))
     def runtime_loader_settings(trainer):
         # Ultralytics resume restores workers from its checkpoint; override before loaders exist.
         trainer.args.workers=args.workers
+        validate_training_settings(vars(trainer.args),training_settings)
+        effective_training.update(vars(trainer.args))
         from ultralytics.utils import YAML
         YAML.save(trainer.save_dir/'args.yaml',vars(trainer.args))
     model.add_callback('on_pretrain_routine_start',runtime_loader_settings)
@@ -52,12 +60,12 @@ def run(args):
         result=model.val(data=str(data),split='val',imgsz=args.imgsz,batch=args.batch,device=0,workers=args.workers,
             project=str(out.parent),name=name,exist_ok=True,plots=False,verbose=False)
     else:
-        result=model.train(data=str(data),epochs=args.epochs,patience=args.patience,imgsz=args.imgsz,batch=args.batch,
-            device=0,workers=args.workers,amp=True,optimizer='AdamW',lr0=.001,seed=args.seed,deterministic=True,
-            close_mosaic=min(10,args.epochs//4),project=str(out.parent),name=name,exist_ok=True,
-            verbose=False,plots=True,cache=False,resume=resume,**changes)
+        result=model.train(**training_settings,project=str(out.parent),name=name,exist_ok=True,
+            verbose=False,plots=True,cache=False,resume=resume)
     report={'name':name,'profile':args.profile,'arch':args.arch,'imgsz':args.imgsz,'seed':args.seed,
-            'epochs_requested':args.epochs,'batch':args.batch,'workers':args.workers,'augmentation':changes,'data':str(data),'initial_weights':str(weights),
+            'epochs_requested':args.epochs,'patience':args.patience,'batch':args.batch,
+            'workers':effective_training.get('workers',args.workers),'augmentation':changes,
+            'training_arguments':effective_training,'data':str(data),'initial_weights':str(weights),
             'weights':str(out/'weights/best.pt'),'wall_seconds':time.perf_counter()-started,
             'peak_gpu_allocated_bytes':torch.cuda.max_memory_allocated(),
             'resumed_from_epoch':resumed_epoch,'wall_seconds_this_invocation':time.perf_counter()-started,
