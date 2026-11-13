@@ -17,7 +17,8 @@ def read_image(path: str | Path):
     path = Path(path)
     if not path.is_file():
         raise FileNotFoundError(f"Изображение не найдено: {path}")
-    image = cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_COLOR)
+    encoded = np.fromfile(path, dtype=np.uint8)
+    image = cv2.imdecode(encoded, cv2.IMREAD_COLOR) if encoded.size else None
     if image is None:
         raise ValueError(f"Не удалось прочитать изображение: {path}")
     return image

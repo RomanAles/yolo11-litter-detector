@@ -1,0 +1,9 @@
+**
+!Dockerfile
+!requirements-demo.txt
+!configs/
+!configs/*.yaml
+!src/
+!src/litter_detector/
+!src/litter_detector/*.py
+!src/litter_detector/demo.html

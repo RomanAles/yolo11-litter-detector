@@ -6,6 +6,7 @@ from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed
 import hashlib
 from itertools import islice
 import json
+import os
 from pathlib import Path
 import time
 import zipfile
@@ -13,6 +14,7 @@ import re
 import tarfile
 
 import requests
+from filelock import FileLock
 
 ROOT = Path(__file__).resolve().parents[1]
 RAW = ROOT / "data/raw"
@@ -125,33 +127,67 @@ def taco_mirror() -> None:
 
 def range_download(url, destination, chunk_size=16*1024*1024):
     """Restart-safe range downloads, bounded memory, no discarded multi-GB transfer."""
+    if chunk_size < 1:
+        raise ValueError('Chunk size must be positive')
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with FileLock(destination.with_suffix(destination.suffix + '.lock'), timeout=0):
+        return _range_download(url, destination, chunk_size)
+
+
+def _range_download(url, destination, chunk_size):
     if destination.is_file():
         return destination
-    with requests.get(url,headers={'Range':'bytes=0-0'},timeout=30) as response:
+    headers = {'Accept-Encoding': 'identity'}
+    with requests.get(url, headers={**headers, 'Range': 'bytes=0-0'}, stream=True, timeout=30) as response:
         response.raise_for_status()
-        if response.status_code!=206:
+        content_range = re.fullmatch(r'bytes 0-0/([1-9][0-9]*)', response.headers.get('Content-Range', ''))
+        if response.status_code != 206 or content_range is None:
             raise RuntimeError('Server does not support partial downloads')
-        size=int(response.headers['Content-Range'].split('/')[-1])
+        size = int(content_range[1])
+        etag = response.headers.get('ETag')
+        validator = etag if etag and not etag.startswith('W/') else response.headers.get('Last-Modified')
+        if validator:
+            headers['If-Range'] = validator
     temporary=destination.with_suffix('.part')
     ledger=destination.with_suffix('.chunks.json')
-    destination.parent.mkdir(parents=True,exist_ok=True)
-    completed=set(json.loads(ledger.read_text()) if ledger.exists() else [])
-    if not temporary.exists():
-        completed=set()
-        with temporary.open('wb') as output:output.truncate(size)
+    identity = {'url': url, 'size': size, 'chunk_size': chunk_size, 'validator': validator}
+    total = (size + chunk_size - 1) // chunk_size
+    try:
+        state = json.loads(ledger.read_text(encoding='utf-8')) if ledger.exists() else None
+    except json.JSONDecodeError:
+        state = None
+    completed = set()
+    if (validator and isinstance(state, dict) and state.get('archive') == identity
+            and temporary.is_file() and temporary.stat().st_size == size):
+        completed = {index for index in state.get('completed', []) if type(index) is int and 0 <= index < total}
+    if not completed:
+        ledger.unlink(missing_ok=True)
+        with temporary.open('wb') as output:
+            output.truncate(size)
+
     def fetch(index):
         start=index*chunk_size;end=min(size,start+chunk_size)-1
         for attempt in range(5):
             try:
-                with requests.get(url,headers={'Range':f'bytes={start}-{end}'},timeout=(20,90)) as r:
+                with requests.get(url, headers={**headers, 'Range': f'bytes={start}-{end}'},
+                                  stream=True, timeout=(20,90)) as r:
                     r.raise_for_status()
-                    if r.status_code!=206 or len(r.content)!=end-start+1 or not r.headers.get('Content-Range','').startswith(f'bytes {start}-{end}/'):
+                    if r.status_code != 206 or r.headers.get('Content-Range') != f'bytes {start}-{end}/{size}':
                         raise OSError('Incorrect range response')
-                    return index,r.content
+                    if r.headers.get('Content-Encoding', 'identity') != 'identity':
+                        raise OSError('Unexpected content encoding for byte range')
+                    expected = end - start + 1
+                    data = bytearray()
+                    for chunk in r.iter_content(min(expected, 1024 * 1024)):
+                        if len(data) + len(chunk) > expected:
+                            raise OSError('Incorrect range response size')
+                        data.extend(chunk)
+                    if len(data) != expected:
+                        raise OSError('Incorrect range response size')
+                    return index, data
             except (requests.RequestException,OSError):
                 if attempt==4:raise
                 time.sleep(2**attempt)
-    total=(size+chunk_size-1)//chunk_size
     pending=(i for i in range(total) if i not in completed)
     workers=6
     with temporary.open('r+b') as output, ThreadPoolExecutor(max_workers=workers) as pool:
@@ -163,13 +199,17 @@ def range_download(url, destination, chunk_size=16*1024*1024):
                 index,data=future.result()
                 del future
                 output.seek(index*chunk_size);output.write(data);output.flush()
+                os.fsync(output.fileno())
                 del data
                 completed.add(index)
                 ledger_tmp=ledger.with_suffix('.tmp')
-                ledger_tmp.write_text(json.dumps(sorted(completed)));ledger_tmp.replace(ledger)
+                ledger_tmp.write_text(json.dumps({'archive': identity, 'completed': sorted(completed)}),
+                                      encoding='utf-8')
+                ledger_tmp.replace(ledger)
                 if len(completed)%10==0:print(f'Archive chunks {len(completed)}/{total}',flush=True)
             futures.update(pool.submit(fetch,i) for i in islice(pending,workers-len(futures)))
     temporary.replace(destination)
+    ledger.unlink(missing_ok=True)
     return destination
 
 

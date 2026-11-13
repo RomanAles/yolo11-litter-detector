@@ -5,12 +5,23 @@ import numpy as np
 from litter_detector.detector import ROOT,read_image
 from litter_detector.metrics import average_precision,count_at
 from litter_detector.artifacts import write_json
+from litter_detector.experiments import file_sha256
 
 
 def predict(weights,profile,split='val',imgsz=640,sliced=False,output=None,tile_size=640):
     from ultralytics import YOLO
     import torch
-    files=(ROOT/'data/v2'/profile/f'{split}.txt').read_text().splitlines()
+    folder = ROOT / 'data' / 'v2' / profile
+    file_list = folder / f'{split}.txt'
+    file_list_bytes = file_list.read_bytes()
+    files = file_list_bytes.decode('utf-8').splitlines()
+    if not files:
+        raise ValueError(f'Empty evaluation cohort: {file_list}')
+    inputs = {
+        Path(weights): file_sha256(weights),
+        folder / 'manifest.json': file_sha256(folder / 'manifest.json'),
+        file_list: hashlib.sha256(file_list_bytes).hexdigest(),
+    }
     output=Path(output) if output else ROOT/'outputs/v2/predictions'/f'{profile}_{Path(weights).stem}_{imgsz}_{split}_{sliced}.json'
     model=YOLO(str(weights))
     if sliced:
@@ -39,11 +50,13 @@ def predict(weights,profile,split='val',imgsz=640,sliced=False,output=None,tile_
     table=[count_at(records,round(float(t),2)) for t in np.arange(.05,.901,.05)]
     report={'weights':str(weights),'profile':profile,'split':split,'imgsz':imgsz,'sliced':sliced,'tile_size':tile_size,'records':records,
             'thresholds':table,'ap':average_precision(records),'median_ms':float(np.median(elapsed[3:] or elapsed)),
-            'p95_ms':float(np.quantile(elapsed[3:] or elapsed,.95)), 'weight_sha256':hashlib.sha256(Path(weights).read_bytes()).hexdigest()}
+            'p95_ms':float(np.quantile(elapsed[3:] or elapsed,.95)), 'weight_sha256':inputs[Path(weights)]}
     report['peak_gpu_allocated_bytes']=torch.cuda.max_memory_allocated()
     report['peak_gpu_reserved_bytes']=torch.cuda.max_memory_reserved()
-    report['manifest_sha256']=hashlib.sha256((ROOT/'data/v2'/profile/'manifest.json').read_bytes()).hexdigest()
-    report['file_list_sha256']=hashlib.sha256((ROOT/'data/v2'/profile/f'{split}.txt').read_bytes()).hexdigest()
+    report['manifest_sha256'] = inputs[folder / 'manifest.json']
+    report['file_list_sha256'] = inputs[file_list]
+    if any(file_sha256(path) != digest for path, digest in inputs.items()):
+        raise RuntimeError('Model weights or dataset changed during evaluation')
     write_json(output,report)
     print(profile,split,imgsz,'SAHI' if sliced else 'full',report['ap'],report['median_ms'],flush=True)
     return report

@@ -1,0 +1,36 @@
+x-demo: &demo
+  ports:
+    - "127.0.0.1:${LITTER_DEMO_PORT:-7860}:7860"
+  volumes:
+    - type: bind
+      source: ./demo-assets
+      target: /app/demo-assets
+      read_only: true
+      bind:
+        create_host_path: false
+    - demo-results:/app/results
+  healthcheck:
+    test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/health', timeout=3)"]
+    interval: 5s
+    timeout: 4s
+    retries: 6
+    start_period: 20s
+
+services:
+  demo:
+    <<: *demo
+    image: litter-detector-demo:cpu
+    build:
+      context: .
+      target: cpu
+  demo-gpu:
+    <<: *demo
+    image: litter-detector-demo:gpu
+    profiles: [gpu]
+    build:
+      context: .
+      target: gpu
+    gpus: all
+
+volumes:
+  demo-results:

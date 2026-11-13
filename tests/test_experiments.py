@@ -30,7 +30,7 @@ def recorded_run(tmp_path):
 
 @pytest.mark.parametrize('changed', [
     {'arch': 'yolo11s'}, {'augment': '{"hsv_v": 0.1}'}, {'patience': 8},
-    {'weights': 'different.pt'}, {'batch': 8}, {'epochs': 15}, {'seed': 123},
+    {'weights': 'different.pt'}, {'batch': 8}, {'epochs': 15}, {'seed': 123}, {'lr0': .002},
 ])
 def test_resume_rejects_changed_recipe_before_loading_gpu_or_checkpoint(recorded_run, monkeypatch, changed):
     root, _, arguments, _ = recorded_run
@@ -91,6 +91,38 @@ def test_checkpoint_settings_are_verified_beyond_seed_and_resolution():
         validate_training_settings({'imgsz': 640, 'hsv_v': 0.4}, {'imgsz': 640, 'hsv_v': 0.1})
 
 
+def test_resume_rejects_replaced_initial_weights_at_same_path(recorded_run, monkeypatch):
+    root, out, arguments, _ = recorded_run
+    weights = root / 'models/pretrained/yolo11n.pt'
+    weights.parent.mkdir()
+    weights.write_bytes(b'replaced')
+    recipe_path = out / 'run_recipe.json'
+    recipe = json.loads(recipe_path.read_text())
+    recipe['initial_weights_sha256'] = hashlib.sha256(b'original').hexdigest()
+    recipe_path.write_text(json.dumps(recipe))
+    monkeypatch.setattr(experiment, 'ROOT', root)
+    with pytest.raises(RuntimeError, match='Initial weights differ'):
+        experiment.run(Namespace(**arguments))
+
+
+def test_experiment_rejects_run_name_outside_models(tmp_path, monkeypatch):
+    monkeypatch.setattr(experiment, 'ROOT', tmp_path)
+    with pytest.raises(ValueError, match='run name'):
+        experiment.run(Namespace(profile='land', name='../outside'))
+    assert not (tmp_path / 'models').exists()
+
+
+def test_completed_run_rejects_changed_best_checkpoint(recorded_run):
+    root, out, arguments, _ = recorded_run
+    best = out / 'weights/best.pt'
+    best.write_bytes(b'replaced')
+    (out / 'summary.json').write_text(json.dumps({
+        'weights': str(best), 'weight_sha256': hashlib.sha256(b'original').hexdigest(),
+    }))
+    with pytest.raises(RuntimeError, match='Best checkpoint missing or changed'):
+        validate_existing_run(out, arguments, root)
+
+
 def test_matching_resume_records_effective_worker_settings(recorded_run, monkeypatch):
     root, out, arguments, _ = recorded_run
     saved = {'data': arguments['data'], 'epochs': 80, 'patience': 15, 'imgsz': 640,
@@ -109,6 +141,7 @@ def test_matching_resume_records_effective_worker_settings(recorded_run, monkeyp
             trainer = SimpleNamespace(args=Namespace(**saved), save_dir=out)
             self.callback(trainer)
             assert trainer.args.workers == 0
+            (out/'weights/best.pt').write_bytes(b'best')
             return SimpleNamespace(results_dict={'metrics/mAP50-95(B)': .3})
 
     torch = SimpleNamespace(

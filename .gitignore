@@ -13,3 +13,4 @@ runs/
 *.log
 Ultralytics/
 docs/chat-exports/
+demo-assets/

@@ -7,7 +7,7 @@ name = "litter-detector"
 version = "0.1.0"
 description = "YOLO11 litter detection on public land and underwater datasets"
 requires-python = ">=3.11"
-dependencies = ["ultralytics>=8.3,<9", "opencv-python>=4.10", "PyYAML>=6", "requests>=2.32"]
+dependencies = ["ultralytics>=8.3,<9", "opencv-python>=4.10", "PyYAML>=6", "requests>=2.32", "filelock>=3"]
 
 [project.scripts]
 litter = "litter_detector.cli:main"

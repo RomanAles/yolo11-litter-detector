@@ -43,6 +43,8 @@ def test_unicode_image_roundtrip_and_corrupt_input(tmp_path):
     assert read_image(path).shape==image.shape
     path.write_text('not an image')
     with pytest.raises(ValueError):read_image(path)
+    path.write_bytes(b'')
+    with pytest.raises(ValueError):read_image(path)
 
 
 def test_exif_orientation_matches_annotation_coordinates(tmp_path):
@@ -64,10 +66,12 @@ def test_video_keeps_frame_count_and_duration(tmp_path):
     assert writer.isOpened()
     for i in range(24):writer.write(np.full((48,64,3),i*5,dtype='uint8'))
     writer.release()
-    output=tmp_path/'out.mp4';summary=process_video(StubDetector(),source,output)
+    output=tmp_path/'out.mp4';summary=process_video(StubDetector(),source,output,max_frames=24)
     assert summary['frames']==24
     assert summary['duration_seconds']==pytest.approx(2)
     cap=cv2.VideoCapture(str(output));assert cap.get(cv2.CAP_PROP_FRAME_COUNT)==24;cap.release()
+    with pytest.raises(ValueError, match='23'):
+        process_video(StubDetector(), source, tmp_path/'too_long.mp4', max_frames=23)
     with pytest.raises(ValueError):process_video(StubDetector(),source,source)
 
 

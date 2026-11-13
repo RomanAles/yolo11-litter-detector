@@ -2,29 +2,38 @@
 
 This runner does not touch application configs or evaluate the historical test set.
 """
-from pathlib import Path
 import subprocess,json,time,sys
 import yaml
 from litter_detector.detector import ROOT
 from litter_detector.artifacts import write_json
-from litter_detector.experiments import validate_existing_run
+from litter_detector.experiments import experiment_folder, validate_existing_run
 
-PYTHON=str(ROOT/'.venv/python.exe')
+PROJECT_PYTHON = ROOT / '.venv/python.exe'
+PYTHON = str(PROJECT_PYTHON) if PROJECT_PYTHON.is_file() else sys.executable
 EXPERIMENT=ROOT/'models/experiments'
 
 
 def completed(profile,name):return EXPERIMENT/profile/name/'summary.json'
 
 
-def run(profile,name,**kwargs):
-    if completed(profile,name).exists():
-        return validate_existing_run(completed(profile,name).parent,{'profile':profile,'name':name,**kwargs},ROOT)
-    command=[PYTHON,str(ROOT/'scripts/experiment.py'),profile,name]
-    for key,value in kwargs.items():command += ['--'+key.replace('_','-'),str(value)]
+def run(profile,name,*,python=PYTHON,**kwargs):
+    folder = experiment_folder(ROOT, profile, name)
+    arguments = {'profile': profile, 'name': name, **kwargs}
+    summary = validate_existing_run(folder, arguments, ROOT)
+    if summary is not None:
+        return summary
+    command=[str(python),str(ROOT/'scripts/experiment.py'),profile,name]
+    for key, value in kwargs.items():
+        if value is not None:
+            command += ['--' + key.replace('_', '-'), json.dumps(value) if isinstance(value, dict) else str(value)]
     log=ROOT/'.cache'/f'v2-{profile}-{name}.log'
+    log.parent.mkdir(parents=True, exist_ok=True)
     with log.open('w',encoding='utf8') as output:
         subprocess.run(command,cwd=ROOT,stdout=output,stderr=subprocess.STDOUT,check=True)
-    return json.loads(completed(profile,name).read_text())
+    summary = validate_existing_run(folder, arguments, ROOT)
+    if summary is None:
+        raise RuntimeError(f'Training did not produce a summary: {folder}')
+    return summary
 
 
 def score(report):return report['validation']['metrics/mAP50-95(B)']

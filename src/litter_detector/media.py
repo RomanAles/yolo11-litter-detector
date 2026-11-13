@@ -9,6 +9,10 @@ import cv2
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
 
 
+class VideoFrameLimitExceeded(ValueError):
+    pass
+
+
 def process_folder(detector, source, output, stop=None, callback=None):
     source, output = Path(source), Path(output)
     if not source.is_dir():
@@ -36,7 +40,7 @@ def process_folder(detector, source, output, stop=None, callback=None):
     return count
 
 
-def process_video(detector, source, output, stop=None, callback=None):
+def process_video(detector, source, output, stop=None, callback=None, *, max_frames=None):
     source, output = Path(source), Path(output)
     if not source.is_file():
         raise FileNotFoundError(source)
@@ -62,6 +66,8 @@ def process_video(detector, source, output, stop=None, callback=None):
                 ok, frame = cap.read()
                 if not ok:
                     break
+                if max_frames is not None and count >= max_frames:
+                    raise VideoFrameLimitExceeded(f"Видео содержит более {max_frames} кадров")
                 annotated, record = detector.predict(frame, frame_id=count, source_time=count/fps)
                 writer.write(annotated)
                 log.write(json.dumps(record, ensure_ascii=False)+"\n")

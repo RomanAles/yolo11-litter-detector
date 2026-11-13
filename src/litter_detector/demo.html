@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Детектор мусора</title>
+<style>
+  :root { color-scheme: dark; font: 16px Atkinson Hyperlegible Next, system-ui, sans-serif; color: #edf5f7; background: #101923; }
+  * { box-sizing: border-box; }
+  main { max-width: 920px; padding: 40px 20px; margin: auto; }
+  h1 { margin: 0 0 24px; font-size: clamp(30px, 5vw, 44px); letter-spacing: -.035em; }
+  form, #output { padding: 22px; border: 1px solid #3d5161; border-radius: 16px; background: #192734; }
+  label { display: grid; gap: 8px; font-weight: 650; margin-bottom: 18px; }
+  button, select, input { font: inherit; }
+  select, button { padding: 10px 14px; border: 1px solid #6b8292; border-radius: 8px; background: #243746; color: inherit; }
+  button { cursor: pointer; }
+  button.primary { background: #9cf0ce; color: #112f2a; border-color: #9cf0ce; font-weight: 700; }
+  button:disabled { cursor: wait; opacity: .55; }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+  #status { min-height: 1.5em; margin: 16px 0; color: #c9d9e0; }
+  #status.error { color: #ffb3a9; }
+  #output img, #output video { display: block; max-width: 100%; max-height: 68vh; margin: 0 auto 18px; }
+  #output a { color: #9cf0ce; margin-right: 18px; }
+</style>
+<main>
+  <h1>Детектор мусора</h1>
+  <form id="detect">
+    <label>Профиль
+      <select name="profile"><option value="land">Суша</option><option value="underwater">Под водой</option></select>
+    </label>
+    <label>Фото или видео
+      <input name="file" type="file" accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.avi,.mkv,.webm">
+    </label>
+    <div class="actions">
+      <button class="primary" type="submit">Распознать файл</button>
+      <button type="button" data-example="photo">Показать демо-фото</button>
+      <button type="button" data-example="video">Показать демо-видео</button>
+    </div>
+  </form>
+  <p id="status" aria-live="polite"></p>
+  <section id="output" aria-label="Результат распознавания" hidden>
+    <div id="preview"></div>
+    <a id="download-media" download>Скачать результат</a>
+    <a id="download-boxes" download>Скачать разметку</a>
+  </section>
+</main>
+<script>
+  const form = document.querySelector('#detect');
+  const status = document.querySelector('#status');
+  const output = document.querySelector('#output');
+  const buttons = [...form.querySelectorAll('button')];
+  async function detect(example) {
+    const fields = new FormData();
+    fields.set('profile', form.elements.profile.value);
+    if (example) fields.set('example', example);
+    else if (form.elements.file.files.length) fields.set('file', form.elements.file.files[0]);
+    else {
+      status.textContent = 'Выберите файл или готовый пример.';
+      status.className = 'error';
+      return;
+    }
+    buttons.forEach(button => button.disabled = true);
+    output.hidden = true;
+    status.className = '';
+    status.textContent = 'Обработка…';
+    try {
+      const response = await fetch('/api/detect', {method: 'POST', body: fields});
+      const data = response.headers.get('content-type')?.includes('application/json') ? await response.json() : {};
+      if (!response.ok) throw new Error(data.error || 'Ошибка обработки');
+      const preview = document.createElement(data.kind === 'photo' ? 'img' : 'video');
+      preview.src = data.media;
+      if (data.kind === 'video') preview.controls = true;
+      else preview.alt = 'Фото с рамками обнаружений';
+      document.querySelector('#preview').replaceChildren(preview);
+      document.querySelector('#download-media').href = data.media;
+      document.querySelector('#download-boxes').href = data.detections;
+      status.textContent = data.kind === 'photo' ? `Обнаружено объектов: ${data.count}` : `Обработано кадров: ${data.frames}`;
+      output.hidden = false;
+    } catch (error) {
+      status.className = 'error';
+      status.textContent = error.message;
+    } finally {
+      buttons.forEach(button => button.disabled = false);
+    }
+  }
+  form.addEventListener('submit', event => { event.preventDefault(); detect(null); });
+  buttons.filter(button => button.dataset.example).forEach(button => button.addEventListener('click', () => detect(button.dataset.example)));
+</script>
+</html>
